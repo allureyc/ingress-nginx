@@ -15,21 +15,21 @@
 
 !!! attention
     The first time the ingress controller starts, two [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/) create the SSL Certificate used by the admission webhook.
-    For this reason, there is an initial delay of up to two minutes until it is possible to create and validate Ingress definitions.
+    For this reason, there is an initial delay of up to two minutes until it is possible to create and validate Ingress definitions. 
 
-    You can wait until it is ready to run the next command:
+You can wait until it is ready to run the next command:
 
-    ```yaml
-    kubectl wait --namespace ingress-nginx \
-      --for=condition=ready pod \
-      --selector=app.kubernetes.io/component=controller \
-      --timeout=120s
-    ```
+```yaml
+ kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
+```
 
 ## Contents
 
 - [Provider Specific Steps](#provider-specific-steps)
-  - [Docker for Mac](#docker-for-mac)
+  - [Docker Desktop](#docker-desktop)
   - [minikube](#minikube)
   - [microk8s](#microk8s)
   - [AWS](#aws)
@@ -37,6 +37,8 @@
   - [Azure](#azure)
   - [Digital Ocean](#digital-ocean)
   - [Scaleway](#scaleway)
+  - [Exoscale](#exoscale)
+  - [Oracle Cloud Infrastructure](#oracle-cloud-infrastructure)
   - [Bare-metal](#bare-metal)
   - [Verify installation](#verify-installation)
   - [Detect installed version](#detect-installed-version)
@@ -44,12 +46,18 @@
 
 ### Provider Specific Steps
 
-#### Docker for Mac
+#### Docker Desktop
 
-Kubernetes is available in Docker for Mac (from [version 18.06.0-ce](https://docs.docker.com/docker-for-mac/release-notes/#stable-releases-of-2018))
+Kubernetes is available in Docker Desktop
+
+- Mac, from [version 18.06.0-ce](https://docs.docker.com/docker-for-mac/release-notes/#stable-releases-of-2018)
+- Windows, from [version 18.06.0-ce](https://docs.docker.com/docker-for-windows/release-notes/#docker-community-edition-18060-ce-win70-2018-07-25)
+
+!!! attention
+    Before running the command at your terminal, make sure Kubernetes is enabled at Docker settings
 
 ```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/cloud/deploy.yaml
 ```
 
 #### minikube
@@ -74,22 +82,26 @@ Please check the microk8s [documentation page](https://microk8s.io/docs/addon-in
 
 In AWS we use a Network load balancer (NLB) to expose the NGINX Ingress controller behind a Service of `Type=LoadBalancer`.
 
+!!! info
+    The provided templates illustrate the setup for legacy in-tree service load balancer for AWS NLB.
+    AWS provides the documentation on how to use [Network load balancing on Amazon EKS](https://docs.aws.amazon.com/eks/latest/userguide/network-load-balancing.html) with [AWS Load Balancer Controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller).
+
 ##### Network Load Balancer (NLB)
 
 ```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/aws/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/aws/deploy.yaml
 ```
 
-##### TLS termination in AWS Load Balancer (ELB)
+##### TLS termination in AWS Load Balancer (NLB)
 
 In some scenarios is required to terminate TLS in the Load Balancer and not in the ingress controller.
 
 For this purpose we provide a template:
 
-- Download [deploy-tls-termination.yaml](https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/aws/deploy-tls-termination.yaml)
+- Download [deploy-tls-termination.yaml](https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/aws/deploy-tls-termination.yaml)
 
 ```console
-wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/aws/deploy-tls-termination.yaml
+wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/aws/deploy-tls-termination.yaml
 ```
 
 - Edit the file and change:
@@ -135,7 +147,7 @@ More information with regards to timeouts can be found in the [official AWS docu
 
 
 ```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/cloud/deploy.yaml
 ```
 
 !!! failure Important
@@ -144,7 +156,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/cont
 #### Azure
 
 ```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/cloud/deploy.yaml
 ```
 
 More information with regards to Azure annotations for ingress controller can be found in the [official AKS documentation](https://docs.microsoft.com/en-us/azure/aks/ingress-internal-ip#create-an-ingress-controller).
@@ -152,21 +164,37 @@ More information with regards to Azure annotations for ingress controller can be
 #### Digital Ocean
 
 ```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/do/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/do/deploy.yaml
 ```
 
 #### Scaleway
 
 ```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/scw/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/scw/deploy.yaml
 ```
+
+#### Exoscale
+
+```console
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/exoscale/deploy.yaml
+```
+
+The full list of annotations supported by Exoscale is available in the Exoscale Cloud Controller Manager [documentation](https://github.com/exoscale/exoscale-cloud-controller-manager/blob/master/docs/service-loadbalancer.md).
+
+#### Oracle Cloud Infrastructure
+
+```console
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/cloud/deploy.yaml
+```
+
+A [complete list of available annotations for Oracle Cloud Infrastructure](https://github.com/oracle/oci-cloud-controller-manager/blob/master/docs/load-balancer-annotations.md) can be found in the [OCI Cloud Controller Manager](https://github.com/oracle/oci-cloud-controller-manager) documentation.
 
 #### Bare-metal
 
-Using [NodePort](https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport):
+Using [NodePort](https://kubernetes.io/docs/concepts/services-networking/service/#nodeport):
 
 ```console
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.44.0/deploy/static/provider/baremetal/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.4/deploy/static/provider/baremetal/deploy.yaml
 ```
 
 !!! tip
@@ -176,9 +204,6 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/cont
     For extended notes regarding deployments on bare-metal, see [Bare-metal considerations](./baremetal.md).
 
 ### Verify installation
-
-!!! info
-    In minikube the ingress addon is installed in the namespace **kube-system** instead of ingress-nginx
 
 To check if the ingress controller pods have started, run the following command:
 
@@ -216,6 +241,8 @@ helm repo update
 
 helm install ingress-nginx ingress-nginx/ingress-nginx
 ```
+
+[For multiple NGINX Ingress controllers](https://kubernetes.github.io/ingress-nginx/#how-to-easily-install-multiple-instances-of-the-ingress-nginx-controller-in-the-same-cluster)
 
 ## Detect installed version:
 

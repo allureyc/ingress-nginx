@@ -25,6 +25,9 @@ set -o pipefail
 # temporal directory for the /etc/ingress-controller directory
 INGRESS_VOLUME=$(mktemp -d)
 
+# make sure directory for SSL cert storage exists under ingress volume
+mkdir "${INGRESS_VOLUME}/ssl"
+
 if [[ "$OSTYPE" == darwin* ]]; then
   INGRESS_VOLUME=/private$INGRESS_VOLUME
 fi
@@ -34,7 +37,7 @@ function cleanup {
 }
 trap cleanup EXIT
 
-E2E_IMAGE=${E2E_IMAGE:-k8s.gcr.io/ingress-nginx/e2e-test-runner:v20210104-g81a8d5cd8@sha256:bfd55f589ea998f961825a9d09158d766cf621d1b8fc5d8c905aba07d9794e08}
+E2E_IMAGE=${E2E_IMAGE:-k8s.gcr.io/ingress-nginx/e2e-test-runner:v20210916-gd9f96bbbb@sha256:5b434c08e582b58b96867152682c1e754ee609c82390abf3074992d4ec53ed25}
 
 DOCKER_OPTS=${DOCKER_OPTS:-}
 DOCKER_IN_DOCKER_ENABLED=${DOCKER_IN_DOCKER_ENABLED:-}
@@ -60,6 +63,7 @@ else
     --rm                                                \
     ${DOCKER_OPTS}                                      \
     -e GOCACHE="/go/src/${PKG}/.cache"                  \
+    -e GOMODCACHE="/go/src/${PKG}/.modcache"                  \
     -e DOCKER_IN_DOCKER_ENABLED="true"                  \
     -v "${HOME}/.kube:${HOME}/.kube"                    \
     -v "${KUBE_ROOT}:/go/src/${PKG}"                    \

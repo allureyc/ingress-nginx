@@ -93,6 +93,10 @@ const (
 type Configuration struct {
 	defaults.Backend `json:",squash"`
 
+	// AllowSnippetAnnotations enable users to add their own snippets via ingress annotation.
+	// If disabled, only snippets added via ConfigMap are added to ingress.
+	AllowSnippetAnnotations bool `json:"allow-snippet-annotations"`
+
 	// Sets the name of the configmap that contains the headers to pass to the client
 	AddHeaders string `json:"add-headers,omitempty"`
 
@@ -325,7 +329,7 @@ type Configuration struct {
 
 	// Enables or disables emitting nginx version in error messages and in the “Server” response header field.
 	// http://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens
-	// Default: true
+	// Default: false
 	ShowServerTokens bool `json:"server-tokens"`
 
 	// Enabled ciphers list to enabled. The ciphers are specified in the format understood by
@@ -408,6 +412,9 @@ type Configuration struct {
 
 	// Brotli Compression Level that will be used
 	BrotliLevel int `json:"brotli-level,omitempty"`
+
+	// Minimum length of responses, in bytes, that will be eligible for brotli compression
+	BrotliMinLength int `json:"brotli-min-length,omitempty"`
 
 	// MIME Types that will be compressed on-the-fly using Brotli module
 	BrotliTypes string `json:"brotli-types,omitempty"`
@@ -533,6 +540,11 @@ type Configuration struct {
 	// OpentracingOperationName specifies a custom name for the location span
 	OpentracingLocationOperationName string `json:"opentracing-location-operation-name"`
 
+	// OpentracingTrustIncomingSpan sets whether or not to trust incoming trace spans
+	// If false, incoming span headers will be rejected
+	// Default: true
+	OpentracingTrustIncomingSpan bool `json:"opentracing-trust-incoming-span"`
+
 	// ZipkinCollectorHost specifies the host to use when uploading traces
 	ZipkinCollectorHost string `json:"zipkin-collector-host"`
 
@@ -561,6 +573,9 @@ type Configuration struct {
 	// JaegerServiceName specifies the service name to use for any traces created
 	// Default: nginx
 	JaegerServiceName string `json:"jaeger-service-name"`
+
+	// JaegerPropagationFormat specifies the traceparent/tracestate propagation format
+	JaegerPropagationFormat string `json:"jaeger-propagation-format"`
 
 	// JaegerSamplerType specifies the sampler to be used when sampling traces.
 	// The available samplers are: const, probabilistic, ratelimiting, remote
@@ -754,6 +769,8 @@ func NewDefault() Configuration {
 	defGlobalExternalAuth := GlobalExternalAuth{"", "", "", "", "", append(defResponseHeaders, ""), "", "", "", []string{}, map[string]string{}}
 
 	cfg := Configuration{
+
+		AllowSnippetAnnotations:          true,
 		AllowBackendServerHeader:         false,
 		AccessLogPath:                    "/var/log/nginx/access.log",
 		AccessLogParams:                  "",
@@ -764,6 +781,7 @@ func NewDefault() Configuration {
 		BlockUserAgents:                  defBlockEntity,
 		BlockReferers:                    defBlockEntity,
 		BrotliLevel:                      4,
+		BrotliMinLength:                  20,
 		BrotliTypes:                      brotliTypes,
 		ClientHeaderBufferSize:           "1k",
 		ClientHeaderTimeout:              60,
@@ -847,6 +865,7 @@ func NewDefault() Configuration {
 			ProxyRequestBuffering:    "on",
 			ProxyRedirectFrom:        "off",
 			ProxyRedirectTo:          "off",
+			PreserveTrailingSlash:    false,
 			SSLRedirect:              true,
 			CustomHTTPErrors:         []int{},
 			WhitelistSourceRange:     []string{},
@@ -856,6 +875,7 @@ func NewDefault() Configuration {
 			ProxyBuffering:           "off",
 			ProxyHTTPVersion:         "1.1",
 			ProxyMaxTempFileSize:     "1024m",
+			ServiceUpstream:          false,
 		},
 		UpstreamKeepaliveConnections:           320,
 		UpstreamKeepaliveTimeout:               60,
@@ -863,10 +883,12 @@ func NewDefault() Configuration {
 		LimitConnZoneVariable:                  defaultLimitConnZoneVariable,
 		BindAddressIpv4:                        defBindAddress,
 		BindAddressIpv6:                        defBindAddress,
+		OpentracingTrustIncomingSpan:           true,
 		ZipkinCollectorPort:                    9411,
 		ZipkinServiceName:                      "nginx",
 		ZipkinSampleRate:                       1.0,
 		JaegerCollectorPort:                    6831,
+		JaegerPropagationFormat:                "jaeger",
 		JaegerServiceName:                      "nginx",
 		JaegerSamplerType:                      "const",
 		JaegerSamplerParam:                     "1",
@@ -920,7 +942,7 @@ type TemplateConfig struct {
 	ListenPorts              *ListenPorts
 	PublishService           *apiv1.Service
 	EnableMetrics            bool
-	MaxmindEditionFiles      []string
+	MaxmindEditionFiles      *[]string
 	MonitorMaxBatchSize      int
 
 	PID        string

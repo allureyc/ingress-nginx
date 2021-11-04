@@ -60,7 +60,7 @@ data:
 
 ---
 
-apiVersion: networking.k8s.io/v1beta1
+apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
@@ -74,9 +74,13 @@ spec:
   - host: app.example.com
     http:
       paths:
-      - backend:
-          serviceName: example-service
-          servicePort: fastcgi
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: example-service
+            port:
+              name: fastcgi
 ```
 
 ## FastCGI Ingress Annotations

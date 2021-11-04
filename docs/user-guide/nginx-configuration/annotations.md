@@ -18,6 +18,7 @@ You can add these Kubernetes annotations to specific Ingress objects to customiz
 |[nginx.ingress.kubernetes.io/app-root](#rewrite)|string|
 |[nginx.ingress.kubernetes.io/affinity](#session-affinity)|cookie|
 |[nginx.ingress.kubernetes.io/affinity-mode](#session-affinity)|"balanced" or "persistent"|
+|[nginx.ingress.kubernetes.io/affinity-canary-behavior](#session-affinity)|"sticky" or "legacy"|
 |[nginx.ingress.kubernetes.io/auth-realm](#authentication)|string|
 |[nginx.ingress.kubernetes.io/auth-secret](#authentication)|string|
 |[nginx.ingress.kubernetes.io/auth-secret-type](#authentication)|string|
@@ -63,6 +64,7 @@ You can add these Kubernetes annotations to specific Ingress objects to customiz
 |[nginx.ingress.kubernetes.io/permanent-redirect](#permanent-redirect)|string|
 |[nginx.ingress.kubernetes.io/permanent-redirect-code](#permanent-redirect-code)|number|
 |[nginx.ingress.kubernetes.io/temporal-redirect](#temporal-redirect)|string|
+|[nginx.ingress.kubernetes.io/preserve-trailing-slash](#server-side-https-enforcement-through-redirect)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/proxy-body-size](#custom-max-body-size)|string|
 |[nginx.ingress.kubernetes.io/proxy-cookie-domain](#proxy-cookie-domain)|string|
 |[nginx.ingress.kubernetes.io/proxy-cookie-path](#proxy-cookie-path)|string|
@@ -110,6 +112,7 @@ You can add these Kubernetes annotations to specific Ingress objects to customiz
 |[nginx.ingress.kubernetes.io/connection-proxy-header](#connection-proxy-header)|string|
 |[nginx.ingress.kubernetes.io/enable-access-log](#enable-access-log)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/enable-opentracing](#enable-opentracing)|"true" or "false"|
+|[nginx.ingress.kubernetes.io/opentracing-trust-incoming-span](#opentracing-trust-incoming-span)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/enable-influxdb](#influxdb)|"true" or "false"|
 |[nginx.ingress.kubernetes.io/influxdb-measurement](#influxdb)|string|
 |[nginx.ingress.kubernetes.io/influxdb-port](#influxdb)|string|
@@ -140,7 +143,7 @@ In some cases, you may want to "canary" a new set of changes by sending a small 
 Canary rules are evaluated in order of precedence. Precedence is as follows:
 `canary-by-header -> canary-by-cookie -> canary-weight`
 
-**Note** that when you mark an ingress as canary, then all the other non-canary annotations will be ignored (inherited from the corresponding main ingress) except `nginx.ingress.kubernetes.io/load-balance` and `nginx.ingress.kubernetes.io/upstream-hash-by`.
+**Note** that when you mark an ingress as canary, then all the other non-canary annotations will be ignored (inherited from the corresponding main ingress) except `nginx.ingress.kubernetes.io/load-balance`, `nginx.ingress.kubernetes.io/upstream-hash-by`, and [annotations related to session affinity](#session-affinity). If you want to restore the original behavior of canaries when session affinity was ignored, set `nginx.ingress.kubernetes.io/affinity-canary-behavior` annotation with value `legacy` on the canary ingress definition.
 
 **Known Limitations**
 
@@ -162,6 +165,8 @@ The annotation `nginx.ingress.kubernetes.io/affinity` enables and sets the affin
 The only affinity type available for NGINX is `cookie`.
 
 The annotation `nginx.ingress.kubernetes.io/affinity-mode` defines the stickiness of a session. Setting this to `balanced` (default) will redistribute some sessions if a deployment gets scaled up, therefore rebalancing the load on the servers. Setting this to `persistent` will not rebalance sessions to new servers, therefore providing maximum stickiness.
+
+The annotation `nginx.ingress.kubernetes.io/affinity-canary-behavior` defines the behavior of canaries when session affinity is enabled. Setting this to `sticky` (default) will ensure that users that were served by canaries, will continue to be served by canaries. Setting this to `legacy` will restore original canary behavior, when session affinity was ignored.
 
 !!! attention
     If more than one Ingress is defined for a host and at least one Ingress uses `nginx.ingress.kubernetes.io/affinity: cookie`, then only paths on the Ingress using `nginx.ingress.kubernetes.io/affinity` will use session cookie affinity. All paths defined on other Ingresses for the host will be load balanced through the random selection of a backend server.
@@ -213,7 +218,7 @@ nginx.ingress.kubernetes.io/auth-realm: "realm string"
 
 ### Custom NGINX upstream hashing
 
-NGINX supports load balancing by client-server mapping based on [consistent hashing](http://nginx.org/en/docs/http/ngx_http_upstream_module.html#hash) for a given key. The key can contain text, variables or any combination thereof. This feature allows for request stickiness other than client IP or cookies. The [ketama](http://www.last.fm/user/RJ/journal/2007/04/10/392555/) consistent hashing method will be used which ensures only a few keys would be remapped to different servers on upstream group changes.
+NGINX supports load balancing by client-server mapping based on [consistent hashing](http://nginx.org/en/docs/http/ngx_http_upstream_module.html#hash) for a given key. The key can contain text, variables or any combination thereof. This feature allows for request stickiness other than client IP or cookies. The [ketama](https://www.last.fm/user/RJ/journal/2007/04/10/rz_libketama_-_a_consistent_hashing_algo_for_memcache_clients) consistent hashing method will be used which ensures only a few keys would be remapped to different servers on upstream group changes.
 
 There is a special mode of upstream hashing called subset. In this mode, upstream servers are grouped into subsets, and stickiness works by mapping keys to a subset instead of individual upstream servers. Specific server is chosen uniformly at random from the selected sticky subset. It provides a balance between stickiness and load distribution.
 
@@ -240,23 +245,18 @@ It is possible to enable Client Certificate Authentication using additional anno
 
 Client Certificate Authentication is applied per host and it is not possible to specify rules that differ for individual paths.
 
-The annotations are:
+To enable, add the annotation `nginx.ingress.kubernetes.io/auth-tls-secret: namespace/secretName`. This secret must have a file named `ca.crt` containing the full Certificate Authority chain `ca.crt` that is enabled to authenticate against this Ingress.
 
-* `nginx.ingress.kubernetes.io/auth-tls-secret: secretName`:
-  The name of the Secret that contains the full Certificate Authority chain `ca.crt` that is enabled to authenticate against this Ingress.
-  This annotation expects the Secret name in the form "namespace/secretName".
-* `nginx.ingress.kubernetes.io/auth-tls-verify-depth`:
-  The validation depth between the provided client certificate and the Certification Authority chain.
-* `nginx.ingress.kubernetes.io/auth-tls-verify-client`:
-  Enables verification of client certificates. Possible values are:
-  * `off`: Don't request client certificates and don't do client certificate verification. (default)
-  * `on`: Request a client certificate that must be signed by a certificate that is included in the secret key `ca.crt` of the secret specified by `nginx.ingress.kubernetes.io/auth-tls-secret: secretName`. Failed certificate verification will result in a status code 400 (Bad Request).
-  * `optional`: Do optional client certificate validation against the CAs from `auth-tls-secret`. The request fails with status code 400 (Bad Request) when a certificate is provided that is not signed by the CA. When no or an otherwise invalid certificate is provided, the request does not fail, but instead the verification result is sent to the upstream service.
-  * `optional_no_ca`: Do optional client certificate validation, but do not fail the request when the client certificate is not signed by the CAs from `auth-tls-secret`. Certificate verification result is sent to the upstream service.
-* `nginx.ingress.kubernetes.io/auth-tls-error-page`:
-  The URL/Page that user should be redirected in case of a Certificate Authentication Error
-* `nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream`:
-  Indicates if the received certificates should be passed or not to the upstream server in the header `ssl-client-cert`. Possible values are "true" or "false" (default).
+You can further customize client certificate authentication and behaviour with these annotations:
+
+* `nginx.ingress.kubernetes.io/auth-tls-verify-depth`: The validation depth between the provided client certificate and the Certification Authority chain. (default: 1)
+* `nginx.ingress.kubernetes.io/auth-tls-verify-client`: Enables verification of client certificates. Possible values are:
+    * `on`: Request a client certificate that must be signed by a certificate that is included in the secret key `ca.crt` of the secret specified by `nginx.ingress.kubernetes.io/auth-tls-secret: namespace/secretName`. Failed certificate verification will result in a status code 400 (Bad Request) (default)
+    * `off`: Don't request client certificates and don't do client certificate verification.
+    * `optional`: Do optional client certificate validation against the CAs from `auth-tls-secret`. The request fails with status code 400 (Bad Request) when a certificate is provided that is not signed by the CA. When no or an otherwise invalid certificate is provided, the request does not fail, but instead the verification result is sent to the upstream service.
+    * `optional_no_ca`: Do optional client certificate validation, but do not fail the request when the client certificate is not signed by the CAs from `auth-tls-secret`. Certificate verification result is sent to the upstream service.
+* `nginx.ingress.kubernetes.io/auth-tls-error-page`: The URL/Page that user should be redirected in case of a Certificate Authentication Error
+* `nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream`: Indicates if the received certificates should be passed or not to the upstream server in the header `ssl-client-cert`. Possible values are "true" or "false" (default).
 
 The following headers are sent to the upstream service according to the `auth-tls-*` annotations:
 
@@ -304,6 +304,8 @@ nginx.ingress.kubernetes.io/configuration-snippet: |
   more_set_headers "Request-Id: $req_id";
 ```
 
+Be aware this can be dangerous in multi-tenant clusters, as it can lead to people with otherwise limited permissions being able to retrieve all secrets on the cluster. The recommended mitigation for this threat is to disable this feature, so it may not work for you. See CVE-2021-25742 and the [related issue on github](https://github.com/kubernetes/ingress-nginx/issues/7837) for more information.
+
 ### Custom HTTP Errors
 
 Like the [`custom-http-errors`](./configmap.md#custom-http-errors) value in the ConfigMap, this annotation will set NGINX `proxy-intercept-errors`, but only for the NGINX location associated with this ingress. If a [default backend annotation](#default-backend) is specified on the ingress, the errors will be routed to that annotation's default backend service (instead of the global default backend).
@@ -317,9 +319,9 @@ nginx.ingress.kubernetes.io/custom-http-errors: "404,415"
 
 ### Default Backend
 
-This annotation is of the form `nginx.ingress.kubernetes.io/default-backend: <svc name>` to specify a custom default backend.  This `<svc name>` is a reference to a service inside of the same namespace in which you are applying this annotation. This annotation overrides the global default backend.
+This annotation is of the form `nginx.ingress.kubernetes.io/default-backend: <svc name>` to specify a custom default backend.  This `<svc name>` is a reference to a service inside of the same namespace in which you are applying this annotation. This annotation overrides the global default backend. In case the service has [multiple ports](https://kubernetes.io/docs/concepts/services-networking/service/#multi-port-services), the first one is the one which will received the backend traffic. 
 
-This service will be handle the response when the service in the Ingress rule does not have active endpoints. It will also handle the error responses if both this annotation and the [custom-http-errors annotation](#custom-http-errors) is set.
+This service will be used to handle the response when the configured service in the Ingress rule does not have any active endpoints. It will also be used to handle the error responses if both this annotation and the [custom-http-errors annotation](#custom-http-errors) are set.
 
 ### Enable CORS
 
@@ -329,39 +331,46 @@ location enabling this functionality.
 
 CORS can be controlled with the following annotations:
 
-* `nginx.ingress.kubernetes.io/cors-allow-methods`
-  controls which methods are accepted. This is a multi-valued field, separated by ',' and
-  accepts only letters (upper and lower case).
-  - Default: `GET, PUT, POST, DELETE, PATCH, OPTIONS`
-  - Example: `nginx.ingress.kubernetes.io/cors-allow-methods: "PUT, GET, POST, OPTIONS"`
+* `nginx.ingress.kubernetes.io/cors-allow-methods`: Controls which methods are accepted.
 
-* `nginx.ingress.kubernetes.io/cors-allow-headers`
-  controls which headers are accepted. This is a multi-valued field, separated by ',' and accepts letters,
-  numbers, _ and -.
-  - Default: `DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization`
-  - Example: `nginx.ingress.kubernetes.io/cors-allow-headers: "X-Forwarded-For, X-app123-XPTO"`
+    This is a multi-valued field, separated by ',' and accepts only letters (upper and lower case).
 
-* `nginx.ingress.kubernetes.io/cors-expose-headers`
-  controls which headers are exposed to response. This is a multi-valued field, separated by ',' and accepts 
-  letters, numbers, _, - and *.
-  - Default: *empty*
-  - Example: `nginx.ingress.kubernetes.io/cors-expose-headers: "*, X-CustomResponseHeader"`
+    - Default: `GET, PUT, POST, DELETE, PATCH, OPTIONS`
+    - Example: `nginx.ingress.kubernetes.io/cors-allow-methods: "PUT, GET, POST, OPTIONS"`
 
-* `nginx.ingress.kubernetes.io/cors-allow-origin`
-  controls what's the accepted Origin for CORS.
-  This is a single field value, with the following format: `http(s)://origin-site.com` or `http(s)://origin-site.com:port`
-  - Default: `*`
-  - Example: `nginx.ingress.kubernetes.io/cors-allow-origin: "https://origin-site.com:4443"`
+* `nginx.ingress.kubernetes.io/cors-allow-headers`: Controls which headers are accepted.
 
-* `nginx.ingress.kubernetes.io/cors-allow-credentials`
-  controls if credentials can be passed during CORS operations.
-  - Default: `true`
-  - Example: `nginx.ingress.kubernetes.io/cors-allow-credentials: "false"`
+    This is a multi-valued field, separated by ',' and accepts letters, numbers, _ and -.
 
-* `nginx.ingress.kubernetes.io/cors-max-age`
-  controls how long preflight requests can be cached.
-  Default: `1728000`
-  Example: `nginx.ingress.kubernetes.io/cors-max-age: 600`
+    - Default: `DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization`
+    - Example: `nginx.ingress.kubernetes.io/cors-allow-headers: "X-Forwarded-For, X-app123-XPTO"`
+
+* `nginx.ingress.kubernetes.io/cors-expose-headers`: Controls which headers are exposed to response.
+
+    This is a multi-valued field, separated by ',' and accepts letters, numbers, _, - and *.
+
+    - Default: *empty*
+    - Example: `nginx.ingress.kubernetes.io/cors-expose-headers: "*, X-CustomResponseHeader"`
+
+* `nginx.ingress.kubernetes.io/cors-allow-origin`: Controls what's the accepted Origin for CORS.
+
+    This is a multi-valued field, separated by ','. It must follow this format: `http(s)://origin-site.com` or `http(s)://origin-site.com:port`
+
+    - Default: `*`
+    - Example: `nginx.ingress.kubernetes.io/cors-allow-origin: "https://origin-site.com:4443, http://origin-site.com, https://example.org:1199"`
+
+    It also supports single level wildcard subdomains and follows this format: `http(s)://*.foo.bar`, `http(s)://*.bar.foo:8080` or `http(s)://*.abc.bar.foo:9000`
+    - Example: `nginx.ingress.kubernetes.io/cors-allow-origin: "https://*.origin-site.com:4443, http://*.origin-site.com, https://example.org:1199"`
+
+* `nginx.ingress.kubernetes.io/cors-allow-credentials`: Controls if credentials can be passed during CORS operations.
+
+    - Default: `true`
+    - Example: `nginx.ingress.kubernetes.io/cors-allow-credentials: "false"`
+
+* `nginx.ingress.kubernetes.io/cors-max-age`: Controls how long preflight requests can be cached.
+
+    - Default: `1728000`
+    - Example: `nginx.ingress.kubernetes.io/cors-max-age: 600`
 
 !!! note
     For more information please see [https://enable-cors.org](https://enable-cors.org/server_nginx.html)
@@ -391,7 +400,7 @@ For more information please see [the `server_name` documentation](http://nginx.o
 Using the annotation `nginx.ingress.kubernetes.io/server-snippet` it is possible to add custom configuration in the server configuration block.
 
 ```yaml
-apiVersion: networking.k8s.io/v1beta1
+apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   annotations:
@@ -528,7 +537,7 @@ to include that in access logs.
 1. The annotations below creates Global Rate Limiting instance per ingress.
 That means if there are multuple paths configured under the same ingress,
 the Global Rate Limiting will count requests to all the paths under the same counter.
-Extract a path out into its own ingres if you need to isolate a certain path.
+Extract a path out into its own ingress if you need to isolate a certain path.
 
 
 * `nginx.ingress.kubernetes.io/global-rate-limit`: Configures maximum allowed number of requests per window. Required.
@@ -588,6 +597,8 @@ When using SSL offloading outside of cluster (e.g. AWS ELB) it may be useful to 
 even when there is no TLS certificate available.
 This can be achieved by using the `nginx.ingress.kubernetes.io/force-ssl-redirect: "true"` annotation in the particular resource.
 
+To preserve the trailing slash in the URI with `ssl-redirect`, set `nginx.ingress.kubernetes.io/preserve-trailing-slash: "true"` annotation for that particular resource.
+
 ### Redirect from/to www
 
 In some scenarios is required to redirect from `www.domain.com` to `domain.com` or vice versa.
@@ -621,6 +632,8 @@ In some scenarios is required to have different values. To allow this we provide
 - `nginx.ingress.kubernetes.io/proxy-next-upstream-timeout`
 - `nginx.ingress.kubernetes.io/proxy-next-upstream-tries`
 - `nginx.ingress.kubernetes.io/proxy-request-buffering`
+
+Note: All timeout values are unitless and in seconds e.g. `nginx.ingress.kubernetes.io/proxy-read-timeout: "120"` sets a valid 120 seconds proxy read timeout.
 
 ### Proxy redirect
 
@@ -757,6 +770,15 @@ to enable it or disable it for a specific ingress (e.g. to turn off tracing of e
 
 ```yaml
 nginx.ingress.kubernetes.io/enable-opentracing: "true"
+```
+
+### Opentracing Trust Incoming Span
+
+The option to trust incoming trace spans can be enabled or disabled globally through the ConfigMap but this will
+sometimes need to be overriden to enable it or disable it for a specific ingress (e.g. only enable on a private endpoint)
+
+```yaml
+nginx.ingress.kubernetes.io/opentracing-trust-incoming-span: "true"
 ```
 
 ### X-Forwarded-Prefix Header

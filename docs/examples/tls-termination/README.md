@@ -11,7 +11,7 @@ You need a [TLS cert](../PREREQUISITES.md#tls-certificates) and a [test HTTP ser
 Create a `ingress.yaml` file.
 
 ```yaml
-apiVersion: networking.k8s.io/v1beta1
+apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: nginx-test
@@ -27,10 +27,13 @@ spec:
       http:
         paths:
         - path: /
+          pathType: Prefix
           backend:
             # This assumes http-svc exists and routes to healthy endpoints
-            serviceName: http-svc
-            servicePort: 80
+            service:
+              name: http-svc
+              port: 
+                number: 80
 ```
 
 The following command instructs the controller to terminate traffic using the provided

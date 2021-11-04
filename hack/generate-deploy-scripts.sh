@@ -89,11 +89,12 @@ controller:
     externalTrafficPolicy: Local
 
     annotations:
-      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: http
-      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: 'true'
+      # This example is for legacy in-tree service load balancer controller for AWS NLB,
+      # that has been phased out from Kubernetes mainline.
+      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
       service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "https"
       service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-west-2:XXXXXXXX:certificate/XXXXXX-XXXXXXX-XXXXXXX-XXXXXXXX"
-      service.beta.kubernetes.io/aws-load-balancer-type: elb
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
       # Ensure the ELB idle timeout is less than nginx keep-alive timeout. By default,
       # NGINX keep-alive is set to 75s. If using WebSockets, the value will need to be
       # increased to '3600' to avoid any potential issues.
@@ -135,6 +136,7 @@ controller:
   terminationGracePeriodSeconds: 0
   service:
     type: NodePort
+  watchIngressWithoutClass: true
 
   nodeSelector:
     ingress-ready: "true"
@@ -163,6 +165,8 @@ controller:
       service.beta.kubernetes.io/do-loadbalancer-enable-proxy-protocol: "true"
   config:
     use-proxy-protocol: "true"
+  admissionWebhooks:
+    timeoutSeconds: 29
 
 EOF
 
@@ -181,6 +185,30 @@ controller:
   config:
     use-proxy-protocol: "true"
 
+EOF
+
+# Exoscale
+echo "${NAMESPACE_VAR}
+$(cat ${OUTPUT_FILE})" > ${OUTPUT_FILE}
+
+OUTPUT_FILE="${DIR}/deploy/static/provider/exoscale/deploy.yaml"
+cat << EOF | helm template $RELEASE_NAME ${DIR}/charts/ingress-nginx --namespace $NAMESPACE --values - | $DIR/hack/add-namespace.py $NAMESPACE > ${OUTPUT_FILE}
+controller:
+  kind: DaemonSet
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    annotations:
+      service.beta.kubernetes.io/exoscale-loadbalancer-name: "nginx-ingress-controller"
+      service.beta.kubernetes.io/exoscale-loadbalancer-description: "NGINX Ingress Controller load balancer"
+      service.beta.kubernetes.io/exoscale-loadbalancer-service-strategy: "source-hash"
+      service.beta.kubernetes.io/exoscale-loadbalancer-service-healthcheck-mode: "http"
+      service.beta.kubernetes.io/exoscale-loadbalancer-service-healthcheck-uri: "/"
+      service.beta.kubernetes.io/exoscale-loadbalancer-service-healthcheck-interval: "10s"
+      service.beta.kubernetes.io/exoscale-loadbalancer-service-healthcheck-timeout: "3s"
+      service.beta.kubernetes.io/exoscale-loadbalancer-service-healthcheck-retries: "1"
+  publishService:
+      enabled: true
 EOF
 
 echo "${NAMESPACE_VAR}

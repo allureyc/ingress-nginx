@@ -33,6 +33,7 @@ import (
 // contains invalid instructions
 type Checker interface {
 	CheckIngress(ing *networking.Ingress) error
+	CheckWarning(ing *networking.Ingress) ([]string, error)
 }
 
 // IngressAdmission implements the AdmissionController interface
@@ -41,19 +42,16 @@ type IngressAdmission struct {
 	Checker Checker
 }
 
-var (
-	ingressResource = metav1.GroupVersionKind{
-		Group:   networking.GroupName,
-		Version: "v1",
-		Kind:    "Ingress",
-	}
-)
+var ingressResource = metav1.GroupVersionKind{
+	Group:   networking.GroupName,
+	Version: "v1",
+	Kind:    "Ingress",
+}
 
 // HandleAdmission populates the admission Response
 // with Allowed=false if the Object is an ingress that would prevent nginx to reload the configuration
 // with Allowed=true otherwise
 func (ia *IngressAdmission) HandleAdmission(obj runtime.Object) (runtime.Object, error) {
-
 	review, isV1 := obj.(*admissionv1.AdmissionReview)
 	if !isV1 {
 		return nil, fmt.Errorf("request is not of type AdmissionReview v1 or v1beta1")
@@ -72,7 +70,6 @@ func (ia *IngressAdmission) HandleAdmission(obj runtime.Object) (runtime.Object,
 	codec := json.NewSerializerWithOptions(json.DefaultMetaFactory, scheme, scheme, json.SerializerOptions{
 		Pretty: true,
 	})
-	codec.Decode(review.Request.Object.Raw, nil, nil)
 	_, _, err := codec.Decode(review.Request.Object.Raw, nil, &ingress)
 	if err != nil {
 		klog.ErrorS(err, "failed to decode ingress")
@@ -86,8 +83,17 @@ func (ia *IngressAdmission) HandleAdmission(obj runtime.Object) (runtime.Object,
 		return review, nil
 	}
 
+	// Adds the warnings regardless of operation being allowed or not
+	warning, err := ia.Checker.CheckWarning(&ingress)
+	if err != nil {
+		klog.ErrorS(err, "failed to get ingress warnings")
+	}
+	if len(warning) > 0 {
+		status.Warnings = warning
+	}
+
 	if err := ia.Checker.CheckIngress(&ingress); err != nil {
-		klog.ErrorS(err, "invalid ingress configuration", "ingress", fmt.Sprintf("%v/%v", review.Request.Name, review.Request.Namespace))
+		klog.ErrorS(err, "invalid ingress configuration", "ingress", fmt.Sprintf("%v/%v", review.Request.Namespace, review.Request.Name))
 		status.Allowed = false
 		status.Result = &metav1.Status{
 			Status: metav1.StatusFailure, Code: http.StatusBadRequest, Reason: metav1.StatusReasonBadRequest,
@@ -98,7 +104,7 @@ func (ia *IngressAdmission) HandleAdmission(obj runtime.Object) (runtime.Object,
 		return review, nil
 	}
 
-	klog.InfoS("successfully validated configuration, accepting", "ingress", fmt.Sprintf("%v/%v", review.Request.Name, review.Request.Namespace))
+	klog.InfoS("successfully validated configuration, accepting", "ingress", fmt.Sprintf("%v/%v", review.Request.Namespace, review.Request.Name))
 	status.Allowed = true
 	review.Response = status
 

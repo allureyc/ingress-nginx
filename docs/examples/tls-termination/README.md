@@ -1,6 +1,6 @@
 # TLS termination
 
-This example demonstrates how to terminate TLS through the nginx Ingress controller.
+This example demonstrates how to terminate TLS through the Ingress-Nginx Controller.
 
 ## Prerequisites
 
@@ -22,6 +22,7 @@ spec:
       # This assumes tls-secret exists and the SSL
       # certificate contains a CN for foo.bar.com
       secretName: tls-secret
+  ingressClassName: nginx
   rules:
     - host: foo.bar.com
       http:
@@ -32,7 +33,7 @@ spec:
             # This assumes http-svc exists and routes to healthy endpoints
             service:
               name: http-svc
-              port: 
+              port:
                 number: 80
 ```
 
@@ -64,10 +65,10 @@ Annotations:
 Events:
   FirstSeen	LastSeen	Count	From				SubObjectPath	Type		Reason	Message
   ---------	--------	-----	----				-------------	--------	------	-------
-  7s		7s		1	{nginx-ingress-controller }			Normal		CREATE	default/nginx-test
-  7s		7s		1	{nginx-ingress-controller }			Normal		UPDATE	default/nginx-test
-  7s		7s		1	{nginx-ingress-controller }			Normal		CREATE	ip: 104.198.183.6
-  7s		7s		1	{nginx-ingress-controller }			Warning		MAPPING	Ingress rule 'default/nginx-test' contains no path definition. Assuming /
+  7s		7s		1	{ingress-nginx-controller }			Normal		CREATE	default/nginx-test
+  7s		7s		1	{ingress-nginx-controller }			Normal		UPDATE	default/nginx-test
+  7s		7s		1	{ingress-nginx-controller }			Normal		CREATE	ip: 104.198.183.6
+  7s		7s		1	{ingress-nginx-controller }			Warning		MAPPING	Ingress rule 'default/nginx-test' contains no path definition. Assuming /
 
 $ curl 104.198.183.6 -L
 curl: (60) SSL certificate problem: self signed certificate

@@ -24,9 +24,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/stretchr/testify/assert"
-	networking "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/ingress-nginx/test/e2e/framework"
@@ -43,7 +42,7 @@ var _ = framework.IngressNginxDescribe("[Lua] dynamic configuration", func() {
 	f := framework.NewDefaultFramework("dynamic-configuration")
 
 	ginkgo.BeforeEach(func() {
-		f.NewEchoDeploymentWithReplicas(1)
+		f.NewEchoDeployment()
 		ensureIngress(f, "foo.com", framework.EchoService)
 	})
 
@@ -124,7 +123,10 @@ var _ = framework.IngressNginxDescribe("[Lua] dynamic configuration", func() {
 
 		ginkgo.It("handles endpoints only changes consistently (down scaling of replicas vs. empty service)", func() {
 			deploymentName := "scalingecho"
-			f.NewEchoDeploymentWithNameAndReplicas(deploymentName, 0)
+			f.NewEchoDeployment(
+				framework.WithDeploymentName(deploymentName),
+				framework.WithDeploymentReplicas(0),
+			)
 			createIngress(f, "scaling.foo.com", deploymentName)
 
 			resp := f.HTTPTestClient().
@@ -196,20 +198,18 @@ var _ = framework.IngressNginxDescribe("[Lua] dynamic configuration", func() {
 	})
 })
 
-func ensureIngress(f *framework.Framework, host string, deploymentName string) *networking.Ingress {
-	ing := createIngress(f, host, deploymentName)
+func ensureIngress(f *framework.Framework, host, deploymentName string) {
+	createIngress(f, host, deploymentName)
 
 	f.HTTPTestClient().
 		GET("/").
 		WithHeader("Host", host).
 		Expect().
 		Status(http.StatusOK)
-
-	return ing
 }
 
-func createIngress(f *framework.Framework, host string, deploymentName string) *networking.Ingress {
-	ing := f.EnsureIngress(framework.NewSingleIngress(host, "/", host, f.Namespace, deploymentName, 80,
+func createIngress(f *framework.Framework, host, deploymentName string) {
+	f.EnsureIngress(framework.NewSingleIngress(host, "/", host, f.Namespace, deploymentName, 80,
 		map[string]string{
 			"nginx.ingress.kubernetes.io/load-balance": "ewma",
 		},
@@ -220,21 +220,19 @@ func createIngress(f *framework.Framework, host string, deploymentName string) *
 			return strings.Contains(server, fmt.Sprintf("server_name %s ;", host)) &&
 				strings.Contains(server, "proxy_pass http://upstream_balancer;")
 		})
-
-	return ing
 }
 
-func ensureHTTPSRequest(f *framework.Framework, url string, host string, expectedDNSName string) {
+func ensureHTTPSRequest(f *framework.Framework, url, host, expectedDNSName string) {
 	resp := f.HTTPTestClientWithTLSConfig(&tls.Config{
 		ServerName:         host,
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, //nolint:gosec // Ignore the gosec error in testing
 	}).
 		GET("/").
 		WithURL(url).
 		WithHeader("Host", host).
 		Expect().
 		Raw()
-
+	defer resp.Body.Close()
 	assert.Equal(ginkgo.GinkgoT(), resp.StatusCode, http.StatusOK)
 	assert.Equal(ginkgo.GinkgoT(), len(resp.TLS.PeerCertificates), 1)
 	assert.Equal(ginkgo.GinkgoT(), resp.TLS.PeerCertificates[0].DNSNames[0], expectedDNSName)
